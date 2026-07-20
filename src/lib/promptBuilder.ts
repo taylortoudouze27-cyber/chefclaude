@@ -1,9 +1,5 @@
 import { WEEKDAYS } from '../types'
-import type { GroceryPrepPlan, MealPlan, Preferences } from '../types'
-
-export const MEAL_PLAN_SYSTEM_PROMPT =
-  'You are a meal planning assistant. Return ONLY a JSON object — no markdown, no preamble. ' +
-  'Never repeat the same protein source in back-to-back meals.'
+import type { MealPlan, Preferences } from '../types'
 
 export function resolveStore(prefs: Preferences): string {
   return prefs.store === 'other' && prefs.storeOther.trim() ? prefs.storeOther.trim() : prefs.store
@@ -28,13 +24,18 @@ function skippedList(prefs: Preferences): string {
   return skipped.join(', ') || 'none'
 }
 
-export function buildMealPlanUserPrompt(prefs: Preferences): string {
+/** Prompt 1: propose a meal plan. Asks for JSON so the app can parse Claude's reply back in. */
+export function buildMealPlanPrompt(prefs: Preferences): string {
   const counts = mealCounts(prefs)
   const favoritesToInclude = prefs.favorites.filter((f) => f.include).map((f) => f.name)
 
   const lines: string[] = []
-  lines.push('Generate a weekly meal plan as JSON with this exact shape:')
-  lines.push(`{
+  lines.push(
+    "I'm using a meal-planning app that needs your reply as a single JSON object so it can import it directly. " +
+      'Reply with ONLY the JSON object below — no markdown code fences, no preamble, no explanation.',
+  )
+  lines.push(`
+{
   "breakfast": { "name": string, "description": string, "protein": string, "days": string[] },
   "lunches": [{ "name": string, "description": string, "protein": string, "option": "A" | "B" | "C" }],
   "dinners": [{ "name": string, "description": string, "protein": string }],
@@ -76,50 +77,50 @@ export function buildMealPlanUserPrompt(prefs: Preferences): string {
   lines.push("- Vary protein sources — don't repeat the same protein back to back")
   lines.push('- Simple and repeatable is fine')
 
-  lines.push('\nReturn ONLY the JSON object, matching the shape above exactly.')
-
   return lines.join('\n')
 }
 
-export function buildRegenerateMealPrompt(prefs: Preferences, mealDescription: string): string {
-  return `The user wants to regenerate just this one meal from an otherwise-approved plan: "${mealDescription}".
-Propose a replacement that fits these preferences:
-- Goals: ${prefs.goals.join(', ') || 'none specified'}
-- Cuisines / flavors this week: ${prefs.cuisines.join(', ') || 'no preference'}
-- Specific requests: ${prefs.cravings || 'none'}
-- Avoid: ${prefs.avoid || 'nothing'}
-- Already have on hand: ${prefs.onhand || 'nothing noted'}
-
-Return ONLY a JSON object with this shape: { "name": string, "description": string, "protein": string }`
+function formatMealPlanForPrompt(plan: MealPlan): string {
+  const lines: string[] = []
+  lines.push(
+    `Breakfast: ${plan.breakfast.name} — ${plan.breakfast.description} (protein: ${plan.breakfast.protein}) — ${
+      plan.breakfast.days.join(', ') || 'every day'
+    }`,
+  )
+  plan.lunches.forEach((l) => lines.push(`Lunch option ${l.option}: ${l.name} — ${l.description} (protein: ${l.protein})`))
+  plan.dinners.forEach((d, i) => lines.push(`Dinner ${i + 1}: ${d.name} — ${d.description} (protein: ${d.protein})`))
+  if (plan.snacks.length) lines.push(`Snacks: ${plan.snacks.join(', ')}`)
+  return lines.join('\n')
 }
 
-export const GROCERY_PREP_SYSTEM_PROMPT =
-  'You are a meal prep assistant. Return ONLY a JSON object — no markdown, no preamble.'
+/**
+ * Prompt 2: hand off the approved plan for grocery list + prep + Reminders push.
+ * This is the terminal step — meant to run in a Claude conversation with the
+ * Apple Reminders MCP connected (e.g. Claude Desktop), not parsed back into the app.
+ */
+export function buildGroceryPrepPrompt(prefs: Preferences, plan: MealPlan): string {
+  const lines: string[] = []
+  lines.push("Here's the meal plan I approved:\n")
+  lines.push(formatMealPlanForPrompt(plan))
 
-export function buildGroceryPrepUserPrompt(prefs: Preferences, plan: MealPlan): string {
-  return `Given this approved meal plan, generate a grocery list and prep instructions as JSON with this exact shape:
-{
-  "groceryList": { "Produce": string[], "Protein": string[], "Dairy": string[], "Pantry": string[], "Frozen": string[] },
-  "prepSteps": string[],
-  "mealSchedule": {
-    "Breakfast": { "meal": string, "days": string[] },
-    "Lunch": [{ "meal": string, "days": string[] }],
-    "Dinner": [{ "meal": string, "days": string[] }]
-  }
+  lines.push('\nPlease now:')
+  lines.push(
+    '1. Generate a grocery list — one item per line, grouped by category (Produce, Protein, Dairy, Pantry, ' +
+      'Frozen, etc.), each item labeled with the meal it belongs to in parentheses, e.g. "Salmon fillet ' +
+      `(miso-glazed salmon)". Exclude anything I already have: ${prefs.onhand || 'nothing noted'}. Always include ` +
+      `these standing items: ${prefs.standingItems.join(', ') || 'none'}.`,
+  )
+  lines.push(
+    '2. Generate prep instructions, numbered. Breakfasts/lunches: prep and pack individually per serving, ' +
+      'dressings/sauces packed separately. Dinners: prep or partially prep in bulk per recipe, store together as ' +
+      'one batch, uncooked or minimally cooked, ready to finish night-of.',
+  )
+  lines.push(
+    '3. After the prep instructions, list the meal schedule grouped by meal type (all breakfasts with their days, ' +
+      'then lunches, then dinners), formatted as "Meal name (Day, Day, Day)".',
+  )
+  lines.push('4. Add the grocery items to my Reminders list "Groceries" — one reminder per item.')
+  lines.push('5. Add the prep steps and meal schedule entries to my Reminders list "Sunday Food Prep" — one reminder per item.')
+
+  return lines.join('\n')
 }
-
-Rules:
-- Each grocery item must be labeled with the meal it belongs to in parentheses, e.g. "Salmon fillet (miso-glazed salmon)".
-- Exclude anything the user already has: ${prefs.onhand || 'nothing noted'}.
-- Always include these standing items (label them "(standing item)"): ${prefs.standingItems.join(', ') || 'none'}.
-- Breakfasts/lunches: prep and pack individually per serving, one container per serving. Dressings/sauces packed separately.
-- Dinners: prep or partially prep in bulk per recipe, store together as one batch, uncooked or minimally cooked, ready to finish night-of.
-- prepSteps should be numbered-order, one instruction per array entry, prefixed with which meal they're for (e.g. "Breakfast — ...", "Lunch A — ...", "Dinner B — ...").
-
-Approved meal plan:
-${JSON.stringify(plan, null, 2)}
-
-Return ONLY the JSON object, matching the shape above exactly.`
-}
-
-export type { GroceryPrepPlan }

@@ -5,10 +5,6 @@ interface Step2Props {
   plan: MealPlan
   onChange: (plan: MealPlan) => void
   onApprove: () => void
-  onRegenerateAll: () => void
-  onRegenerateMeal: (description: string, applyResult: (result: { name: string; description: string; protein: string }) => void) => Promise<void>
-  submitting: boolean
-  error: string | null
 }
 
 interface MealCardProps {
@@ -17,30 +13,18 @@ interface MealCardProps {
   description: string
   protein: string
   onEdit: (field: 'name' | 'description' | 'protein', value: string) => void
-  onRegenerate: () => void
-  regenerating: boolean
 }
 
-function MealCard({ title, name, description, protein, onEdit, onRegenerate, regenerating }: MealCardProps) {
+function MealCard({ title, name, description, protein, onEdit }: MealCardProps) {
   const [editing, setEditing] = useState(false)
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{title}</span>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setEditing((v) => !v)} className="text-xs text-gray-500 hover:text-gray-800">
-            {editing ? 'Done' : 'Edit'}
-          </button>
-          <button
-            type="button"
-            onClick={onRegenerate}
-            disabled={regenerating}
-            className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
-          >
-            {regenerating ? 'Regenerating…' : 'Regenerate'}
-          </button>
-        </div>
+        <button type="button" onClick={() => setEditing((v) => !v)} className="text-xs text-gray-500 hover:text-gray-800">
+          {editing ? 'Done' : 'Edit'}
+        </button>
       </div>
       {editing ? (
         <div className="space-y-2">
@@ -73,30 +57,7 @@ function MealCard({ title, name, description, protein, onEdit, onRegenerate, reg
   )
 }
 
-export default function Step2MealPlanProposal({
-  plan,
-  onChange,
-  onApprove,
-  onRegenerateAll,
-  onRegenerateMeal,
-  submitting,
-  error,
-}: Step2Props) {
-  const [regeneratingKey, setRegeneratingKey] = useState<string | null>(null)
-
-  async function regenerate(
-    key: string,
-    description: string,
-    apply: (result: { name: string; description: string; protein: string }) => void,
-  ) {
-    setRegeneratingKey(key)
-    try {
-      await onRegenerateMeal(description, apply)
-    } finally {
-      setRegeneratingKey(null)
-    }
-  }
-
+export default function Step2MealPlanProposal({ plan, onChange, onApprove }: Step2Props) {
   return (
     <div className="space-y-8">
       <section>
@@ -107,12 +68,6 @@ export default function Step2MealPlanProposal({
           description={plan.breakfast.description}
           protein={plan.breakfast.protein}
           onEdit={(field, value) => onChange({ ...plan, breakfast: { ...plan.breakfast, [field]: value } })}
-          regenerating={regeneratingKey === 'breakfast'}
-          onRegenerate={() =>
-            regenerate('breakfast', `Breakfast: ${plan.breakfast.name} — ${plan.breakfast.description}`, (result) =>
-              onChange({ ...plan, breakfast: { ...plan.breakfast, ...result } }),
-            )
-          }
         />
       </section>
 
@@ -131,14 +86,6 @@ export default function Step2MealPlanProposal({
                 next[i] = { ...next[i], [field]: value }
                 onChange({ ...plan, lunches: next })
               }}
-              regenerating={regeneratingKey === `lunch-${i}`}
-              onRegenerate={() =>
-                regenerate(`lunch-${i}`, `Lunch option ${lunch.option}: ${lunch.name} — ${lunch.description}`, (result) => {
-                  const next = [...plan.lunches]
-                  next[i] = { ...next[i], ...result }
-                  onChange({ ...plan, lunches: next })
-                })
-              }
             />
           ))}
         </div>
@@ -159,14 +106,6 @@ export default function Step2MealPlanProposal({
                 next[i] = { ...next[i], [field]: value }
                 onChange({ ...plan, dinners: next })
               }}
-              regenerating={regeneratingKey === `dinner-${i}`}
-              onRegenerate={() =>
-                regenerate(`dinner-${i}`, `Dinner: ${dinner.name} — ${dinner.description}`, (result) => {
-                  const next = [...plan.dinners]
-                  next[i] = { ...next[i], ...result }
-                  onChange({ ...plan, dinners: next })
-                })
-              }
             />
           ))}
         </div>
@@ -185,26 +124,13 @@ export default function Step2MealPlanProposal({
         </section>
       )}
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onRegenerateAll}
-          disabled={submitting}
-          className="flex-1 rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-        >
-          {submitting ? 'Regenerating…' : 'Regenerate all'}
-        </button>
-        <button
-          type="button"
-          onClick={onApprove}
-          disabled={submitting}
-          className="flex-1 rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {submitting ? 'Working…' : 'Approve plan'}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onApprove}
+        className="min-h-[44px] w-full rounded-lg bg-emerald-600 px-4 text-[15px] font-semibold text-white hover:bg-emerald-700"
+      >
+        Approve plan
+      </button>
     </div>
   )
 }

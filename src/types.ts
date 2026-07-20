@@ -66,25 +66,4 @@ export interface MealPlan {
   snacks: string[]
 }
 
-export type GroceryCategory = 'Produce' | 'Protein' | 'Dairy' | 'Pantry' | 'Frozen' | string
-
-export type GroceryList = Record<GroceryCategory, string[]>
-
-export interface MealScheduleEntry {
-  meal: string
-  days: string[]
-}
-
-export interface MealSchedule {
-  Breakfast: MealScheduleEntry
-  Lunch: MealScheduleEntry[]
-  Dinner: MealScheduleEntry[]
-}
-
-export interface GroceryPrepPlan {
-  groceryList: GroceryList
-  prepSteps: string[]
-  mealSchedule: MealSchedule
-}
-
 export type Step = 1 | 2 | 3

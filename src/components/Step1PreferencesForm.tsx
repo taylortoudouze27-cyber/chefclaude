@@ -6,9 +6,6 @@ import { loadFavorites, saveFavorites } from '../lib/favorites'
 interface Step1Props {
   preferences: Preferences
   onChange: (prefs: Preferences) => void
-  onSubmit: () => void
-  submitting: boolean
-  error: string | null
 }
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner']
@@ -57,7 +54,7 @@ function ChipRow({
 const textInputClass =
   'w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-base outline-none focus:border-gray-400 focus:bg-white'
 
-export default function Step1PreferencesForm({ preferences, onChange, onSubmit, submitting, error }: Step1Props) {
+export default function Step1PreferencesForm({ preferences, onChange }: Step1Props) {
   const [favInput, setFavInput] = useState('')
 
   useEffect(() => {
@@ -109,13 +106,7 @@ export default function Step1PreferencesForm({ preferences, onChange, onSubmit, 
   const sortedFavorites = [...preferences.favorites].sort((a, b) => Number(b.starred) - Number(a.starred))
 
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSubmit()
-      }}
-    >
+    <div className="space-y-4">
       <Section title="Nutrition focus">
         <div>
           <label className="mb-1.5 block text-sm text-gray-600">Goals this week</label>
@@ -342,19 +333,7 @@ export default function Step1PreferencesForm({ preferences, onChange, onSubmit, 
         </div>
         <StandingItemAdder onAdd={(item) => update('standingItems', [...preferences.standingItems, item])} />
       </Section>
-
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      <div className="flex gap-2 pt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="min-h-[44px] flex-1 rounded-lg bg-gray-900 px-4 text-[15px] font-semibold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? 'Generating meal plan…' : 'Generate meal plan'}
-        </button>
-      </div>
-    </form>
+    </div>
   )
 }
 
