@@ -89,7 +89,12 @@ export default function App() {
 
       {step === 2 && mealPlan && (
         <div className="space-y-6">
-          <Step2MealPlanProposal plan={mealPlan} onChange={setMealPlan} onApprove={() => setStep(3)} />
+          <Step2MealPlanProposal
+            preferences={preferences}
+            plan={mealPlan}
+            onChange={setMealPlan}
+            onApprove={() => setStep(3)}
+          />
           <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Want a different plan?</h2>
             <p className="text-sm text-gray-600">

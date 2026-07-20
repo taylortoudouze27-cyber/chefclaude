@@ -80,6 +80,25 @@ export function buildMealPlanPrompt(prefs: Preferences): string {
   return lines.join('\n')
 }
 
+/** Small scoped prompt to swap out just one meal on an already-reviewed plan. */
+export function buildAlternateMealPrompt(prefs: Preferences, mealDescription: string): string {
+  const lines: string[] = []
+  lines.push(
+    `I'm reviewing a meal plan and want a different option for just this one meal: "${mealDescription}". ` +
+      'Propose a replacement that fits these preferences.',
+  )
+  lines.push(`\nGoals: ${prefs.goals.join(', ') || 'none specified'}`)
+  lines.push(`Cuisines / flavors: ${prefs.cuisines.join(', ') || 'no preference'}`)
+  if (prefs.cravings) lines.push(`Specific requests: ${prefs.cravings}`)
+  if (prefs.avoid) lines.push(`Avoid: ${prefs.avoid}`)
+  lines.push(`Already have on hand: ${prefs.onhand || 'nothing noted'}`)
+  lines.push(
+    '\nReply with ONLY this JSON object — no markdown code fences, no preamble, no explanation:\n' +
+      '{ "name": string, "description": string, "protein": string }',
+  )
+  return lines.join('\n')
+}
+
 function formatMealPlanForPrompt(plan: MealPlan): string {
   const lines: string[] = []
   lines.push(

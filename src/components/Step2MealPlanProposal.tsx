@@ -1,10 +1,21 @@
 import { useState } from 'react'
-import type { MealPlan } from '../types'
+import type { MealPlan, Preferences } from '../types'
+import { buildAlternateMealPrompt } from '../lib/promptBuilder'
+import { parseJsonSafely } from '../lib/parseJson'
+import CopyPromptButton from './CopyPromptButton'
+import PasteImportBox from './PasteImportBox'
 
 interface Step2Props {
+  preferences: Preferences
   plan: MealPlan
   onChange: (plan: MealPlan) => void
   onApprove: () => void
+}
+
+interface MealFields {
+  name: string
+  description: string
+  protein: string
 }
 
 interface MealCardProps {
@@ -12,21 +23,59 @@ interface MealCardProps {
   name: string
   description: string
   protein: string
+  mealDescription: string
+  preferences: Preferences
   onEdit: (field: 'name' | 'description' | 'protein', value: string) => void
+  onApplyAlternate: (result: MealFields) => void
 }
 
-function MealCard({ title, name, description, protein, onEdit }: MealCardProps) {
-  const [editing, setEditing] = useState(false)
+function MealCard({
+  title,
+  name,
+  description,
+  protein,
+  mealDescription,
+  preferences,
+  onEdit,
+  onApplyAlternate,
+}: MealCardProps) {
+  const [mode, setMode] = useState<'view' | 'editing' | 'alternate'>('view')
+  const [importError, setImportError] = useState<string | null>(null)
+
+  function handleImportAlternate(text: string) {
+    try {
+      const result = parseJsonSafely<MealFields>(text)
+      onApplyAlternate(result)
+      setImportError(null)
+      setMode('view')
+    } catch {
+      setImportError("Couldn't read that — make sure you pasted Claude's full JSON reply.")
+    }
+  }
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{title}</span>
-        <button type="button" onClick={() => setEditing((v) => !v)} className="text-xs text-gray-500 hover:text-gray-800">
-          {editing ? 'Done' : 'Edit'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'editing' ? 'view' : 'editing')}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {mode === 'editing' ? 'Done' : 'Edit'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'alternate' ? 'view' : 'alternate')}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {mode === 'alternate' ? 'Cancel' : 'Get alternate'}
+          </button>
+        </div>
       </div>
-      {editing ? (
+
+      {mode === 'editing' && (
         <div className="space-y-2">
           <input
             className="w-full rounded border border-gray-300 px-2 py-1 text-sm font-medium"
@@ -44,7 +93,9 @@ function MealCard({ title, name, description, protein, onEdit }: MealCardProps) 
             onChange={(e) => onEdit('protein', e.target.value)}
           />
         </div>
-      ) : (
+      )}
+
+      {mode === 'view' && (
         <>
           <h3 className="font-medium text-gray-900">{name}</h3>
           <p className="text-sm text-gray-600">{description}</p>
@@ -53,11 +104,29 @@ function MealCard({ title, name, description, protein, onEdit }: MealCardProps) 
           </span>
         </>
       )}
+
+      {mode === 'alternate' && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Copy this prompt, paste Claude's reply back in below to swap in a new version of this meal.
+          </p>
+          <CopyPromptButton
+            label="Copy prompt for this meal"
+            getText={() => buildAlternateMealPrompt(preferences, mealDescription)}
+          />
+          <PasteImportBox
+            label="Paste Claude's reply here"
+            buttonLabel="Use this"
+            onImport={handleImportAlternate}
+            error={importError}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
-export default function Step2MealPlanProposal({ plan, onChange, onApprove }: Step2Props) {
+export default function Step2MealPlanProposal({ preferences, plan, onChange, onApprove }: Step2Props) {
   return (
     <div className="space-y-8">
       <section>
@@ -67,7 +136,10 @@ export default function Step2MealPlanProposal({ plan, onChange, onApprove }: Ste
           name={plan.breakfast.name}
           description={plan.breakfast.description}
           protein={plan.breakfast.protein}
+          mealDescription={`Breakfast: ${plan.breakfast.name} — ${plan.breakfast.description}`}
+          preferences={preferences}
           onEdit={(field, value) => onChange({ ...plan, breakfast: { ...plan.breakfast, [field]: value } })}
+          onApplyAlternate={(result) => onChange({ ...plan, breakfast: { ...plan.breakfast, ...result } })}
         />
       </section>
 
@@ -81,9 +153,16 @@ export default function Step2MealPlanProposal({ plan, onChange, onApprove }: Ste
               name={lunch.name}
               description={lunch.description}
               protein={lunch.protein}
+              mealDescription={`Lunch option ${lunch.option}: ${lunch.name} — ${lunch.description}`}
+              preferences={preferences}
               onEdit={(field, value) => {
                 const next = [...plan.lunches]
                 next[i] = { ...next[i], [field]: value }
+                onChange({ ...plan, lunches: next })
+              }}
+              onApplyAlternate={(result) => {
+                const next = [...plan.lunches]
+                next[i] = { ...next[i], ...result }
                 onChange({ ...plan, lunches: next })
               }}
             />
@@ -101,9 +180,16 @@ export default function Step2MealPlanProposal({ plan, onChange, onApprove }: Ste
               name={dinner.name}
               description={dinner.description}
               protein={dinner.protein}
+              mealDescription={`Dinner: ${dinner.name} — ${dinner.description}`}
+              preferences={preferences}
               onEdit={(field, value) => {
                 const next = [...plan.dinners]
                 next[i] = { ...next[i], [field]: value }
+                onChange({ ...plan, dinners: next })
+              }}
+              onApplyAlternate={(result) => {
+                const next = [...plan.dinners]
+                next[i] = { ...next[i], ...result }
                 onChange({ ...plan, dinners: next })
               }}
             />
