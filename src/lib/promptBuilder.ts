@@ -103,24 +103,35 @@ export function buildGroceryPrepPrompt(prefs: Preferences, plan: MealPlan): stri
   lines.push("Here's the meal plan I approved:\n")
   lines.push(formatMealPlanForPrompt(plan))
 
+  const skipped = skippedList(prefs)
+  if (skipped !== 'none') {
+    lines.push(`\nDays I'm eating out / skipping (do not schedule or shop for these): ${skipped}`)
+    if (prefs.eatOutNotes) lines.push(`Context: ${prefs.eatOutNotes}`)
+  }
+
   lines.push('\nPlease now:')
   lines.push(
-    '1. Generate a grocery list — one item per line, grouped by category (Produce, Protein, Dairy, Pantry, ' +
+    '1. Assign each meal to specific weekdays (Monday-Friday), skipping the days listed above, before sizing ' +
+      'anything — the grocery quantities and prep batch sizes must match the actual number of days each meal is ' +
+      'scheduled for, not a full 5-day week.',
+  )
+  lines.push(
+    '2. Generate a grocery list — one item per line, grouped by category (Produce, Protein, Dairy, Pantry, ' +
       'Frozen, etc.), each item labeled with the meal it belongs to in parentheses, e.g. "Salmon fillet ' +
       `(miso-glazed salmon)". Exclude anything I already have: ${prefs.onhand || 'nothing noted'}. Always include ` +
       `these standing items: ${prefs.standingItems.join(', ') || 'none'}.`,
   )
   lines.push(
-    '2. Generate prep instructions, numbered. Breakfasts/lunches: prep and pack individually per serving, ' +
+    '3. Generate prep instructions, numbered. Breakfasts/lunches: prep and pack individually per serving, ' +
       'dressings/sauces packed separately. Dinners: prep or partially prep in bulk per recipe, store together as ' +
       'one batch, uncooked or minimally cooked, ready to finish night-of.',
   )
   lines.push(
-    '3. After the prep instructions, list the meal schedule grouped by meal type (all breakfasts with their days, ' +
-      'then lunches, then dinners), formatted as "Meal name (Day, Day, Day)".',
+    '4. After the prep instructions, list the meal schedule you assigned in step 1, grouped by meal type (all ' +
+      'breakfasts with their days, then lunches, then dinners), formatted as "Meal name (Day, Day, Day)".',
   )
-  lines.push('4. Add the grocery items to my Reminders list "Groceries" — one reminder per item.')
-  lines.push('5. Add the prep steps and meal schedule entries to my Reminders list "Sunday Food Prep" — one reminder per item.')
+  lines.push('5. Add the grocery items to my Reminders list "Groceries" — one reminder per item.')
+  lines.push('6. Add the prep steps and meal schedule entries to my Reminders list "Sunday Food Prep" — one reminder per item.')
 
   return lines.join('\n')
 }
