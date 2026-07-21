@@ -1,36 +1,41 @@
-export const DAYS_OF_WEEK = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-] as const
+// The skip grid only covers the workweek — meal prep here is about
+// getting Mon-Fri covered, weekends are assumed to be more freeform.
+export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
 
-export type DayOfWeek = (typeof DAYS_OF_WEEK)[number]
+export type Weekday = (typeof WEEKDAYS)[number]
 export type MealType = 'breakfast' | 'lunch' | 'dinner'
 
-export type SkipGrid = Record<DayOfWeek, Record<MealType, boolean>>
+export type SkipGrid = Record<Weekday, Record<MealType, boolean>>
 
-export interface MealTargets {
-  breakfasts: number
-  lunches: number
-  lunchRotate: boolean
-  dinners: number
-  dinnerRotate: boolean
-  snacks: boolean
+export const STORE_OPTIONS = [
+  "Trader Joe's",
+  'Whole Foods',
+  'Costco',
+  'Target',
+  'Walmart',
+  'Kroger / local grocery',
+  'other',
+] as const
+
+export interface Favorite {
+  id: string
+  name: string
+  starred: boolean
+  include: boolean
 }
 
 export interface Preferences {
-  nutritionGoals: string
-  nutritionNotes: string
-  cuisines: string
-  specificRequests: string
+  goals: string[]
+  focusNotes: string
+  cuisines: string[]
+  cravings: string
+  avoid: string
+  favorites: Favorite[]
   store: string
-  alreadyHave: string
+  storeOther: string
+  onhand: string
   skippedMeals: SkipGrid
-  targets: MealTargets
+  eatOutNotes: string
   standingItems: string[]
 }
 
@@ -59,27 +64,6 @@ export interface MealPlan {
   lunches: LunchOption[]
   dinners: DinnerOption[]
   snacks: string[]
-}
-
-export type GroceryCategory = 'Produce' | 'Protein' | 'Dairy' | 'Pantry' | 'Frozen' | string
-
-export type GroceryList = Record<GroceryCategory, string[]>
-
-export interface MealScheduleEntry {
-  meal: string
-  days: string[]
-}
-
-export interface MealSchedule {
-  Breakfast: MealScheduleEntry
-  Lunch: MealScheduleEntry[]
-  Dinner: MealScheduleEntry[]
-}
-
-export interface GroceryPrepPlan {
-  groceryList: GroceryList
-  prepSteps: string[]
-  mealSchedule: MealSchedule
 }
 
 export type Step = 1 | 2 | 3

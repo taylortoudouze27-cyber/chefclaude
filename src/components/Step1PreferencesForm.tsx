@@ -1,156 +1,298 @@
-import { useState } from 'react'
-import { DAYS_OF_WEEK, type MealType, type Preferences } from '../types'
+import { useEffect, useState } from 'react'
+import { WEEKDAYS, type MealType, type Preferences, type Favorite, STORE_OPTIONS } from '../types'
+import { GOAL_OPTIONS, CUISINE_OPTIONS } from '../lib/defaults'
+import { loadFavorites, saveFavorites } from '../lib/favorites'
 
 interface Step1Props {
   preferences: Preferences
   onChange: (prefs: Preferences) => void
-  onSubmit: () => void
-  submitting: boolean
-  error: string | null
 }
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner']
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="block text-sm font-medium text-gray-800">{label}</span>
-      {hint && <span className="mb-1 block text-xs text-gray-500">{hint}</span>}
-      <div className="mt-1">{children}</div>
-    </label>
+    <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{title}</h2>
+      {children}
+    </section>
   )
 }
 
-const inputClass =
-  'w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+function ChipRow({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: { value: string; label: string }[]
+  selected: string[]
+  onToggle: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const on = selected.includes(opt.value)
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onToggle(opt.value)}
+            className={`min-h-[38px] rounded-full border-[1.5px] px-3.5 py-2 text-sm transition-colors ${
+              on
+                ? 'border-blue-300 bg-blue-50 font-medium text-blue-700'
+                : 'border-gray-200 bg-gray-50 text-gray-900 hover:bg-gray-100'
+            }`}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
-export default function Step1PreferencesForm({ preferences, onChange, onSubmit, submitting, error }: Step1Props) {
-  const [newStandingItem, setNewStandingItem] = useState('')
+const textInputClass =
+  'w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-base outline-none focus:border-gray-400 focus:bg-white'
+
+export default function Step1PreferencesForm({ preferences, onChange }: Step1Props) {
+  const [favInput, setFavInput] = useState('')
+
+  useEffect(() => {
+    const stored = loadFavorites()
+    if (stored.length) onChange({ ...preferences, favorites: stored })
+    // Only load once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function update<K extends keyof Preferences>(key: K, value: Preferences[K]) {
     onChange({ ...preferences, [key]: value })
   }
 
-  function toggleSkip(day: (typeof DAYS_OF_WEEK)[number], meal: MealType) {
+  function toggleInList(key: 'goals' | 'cuisines', value: string) {
+    const list = preferences[key]
+    update(key, list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
+  }
+
+  function toggleSkip(day: (typeof WEEKDAYS)[number], meal: MealType) {
     onChange({
       ...preferences,
       skippedMeals: {
         ...preferences.skippedMeals,
-        [day]: {
-          ...preferences.skippedMeals[day],
-          [meal]: !preferences.skippedMeals[day][meal],
-        },
+        [day]: { ...preferences.skippedMeals[day], [meal]: !preferences.skippedMeals[day][meal] },
       },
     })
   }
 
-  function addStandingItem() {
-    const trimmed = newStandingItem.trim()
-    if (!trimmed) return
-    update('standingItems', [...preferences.standingItems, trimmed])
-    setNewStandingItem('')
+  function updateFavorites(favorites: Favorite[]) {
+    update('favorites', favorites)
+    saveFavorites(favorites)
   }
 
-  function removeStandingItem(index: number) {
-    update(
-      'standingItems',
-      preferences.standingItems.filter((_, i) => i !== index),
-    )
+  function addFavorite() {
+    const name = favInput.trim()
+    if (!name) return
+    updateFavorites([...preferences.favorites, { id: `fav_${Date.now()}`, name, starred: false, include: false }])
+    setFavInput('')
   }
+
+  function toggleFavoriteField(id: string, field: 'starred' | 'include') {
+    updateFavorites(preferences.favorites.map((f) => (f.id === id ? { ...f, [field]: !f[field] } : f)))
+  }
+
+  function deleteFavorite(id: string) {
+    updateFavorites(preferences.favorites.filter((f) => f.id !== id))
+  }
+
+  const sortedFavorites = [...preferences.favorites].sort((a, b) => Number(b.starred) - Number(a.starred))
 
   return (
-    <form
-      className="space-y-8"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSubmit()
-      }}
-    >
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Nutrition Focus</h2>
-        <Field label="Goals" hint="e.g. high protein, high fiber, low carb">
+    <div className="space-y-4">
+      <Section title="Nutrition focus">
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Goals this week</label>
+          <ChipRow
+            options={GOAL_OPTIONS.map((g) => ({ value: g, label: g.charAt(0).toUpperCase() + g.slice(1) }))}
+            selected={preferences.goals}
+            onToggle={(v) => toggleInList('goals', v)}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Additional notes (optional)</label>
           <input
-            className={inputClass}
-            value={preferences.nutritionGoals}
-            onChange={(e) => update('nutritionGoals', e.target.value)}
+            className={textInputClass}
+            placeholder="e.g. lighter dinners, feeling low energy…"
+            value={preferences.focusNotes}
+            onChange={(e) => update('focusNotes', e.target.value)}
           />
-        </Field>
-        <Field label="Notes" hint='e.g. "light/hydrating lunches for hot weather"'>
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={preferences.nutritionNotes}
-            onChange={(e) => update('nutritionNotes', e.target.value)}
-          />
-        </Field>
-      </section>
+        </div>
+      </Section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">What I'm Feeling This Week</h2>
-        <Field label="Cuisines / flavors" hint="e.g. Mediterranean, Asian-inspired">
+      <Section title="What I'm feeling this week">
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Cuisines or flavor profiles</label>
+          <ChipRow options={CUISINE_OPTIONS} selected={preferences.cuisines} onToggle={(v) => toggleInList('cuisines', v)} />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Specific meals or ingredients I want</label>
+          <textarea
+            className={textInputClass}
+            rows={2}
+            placeholder="e.g. want salmon this week, craving a good salad…"
+            value={preferences.cravings}
+            onChange={(e) => update('cravings', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Anything to avoid</label>
           <input
-            className={inputClass}
-            value={preferences.cuisines}
-            onChange={(e) => update('cuisines', e.target.value)}
+            className={textInputClass}
+            placeholder="e.g. no red meat, avoiding dairy, nothing too spicy…"
+            value={preferences.avoid}
+            onChange={(e) => update('avoid', e.target.value)}
           />
-        </Field>
-        <Field
-          label="Specific requests"
-          hint={'e.g. "don\'t want a ton of chicken, breakfast should be english muffin sandwiches"'}
-        >
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={preferences.specificRequests}
-            onChange={(e) => update('specificRequests', e.target.value)}
+        </div>
+      </Section>
+
+      <Section title="⭐ Favorites">
+        <p className="text-sm text-gray-500">Meals you've loved — save them here and request repeats any week.</p>
+        <div className="flex gap-2">
+          <input
+            className={textInputClass}
+            placeholder="e.g. Buffalo chicken salad, Greek bowl…"
+            value={favInput}
+            onChange={(e) => setFavInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addFavorite()
+              }
+            }}
           />
-        </Field>
-      </section>
+          <button
+            type="button"
+            onClick={addFavorite}
+            className="flex-shrink-0 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            Save
+          </button>
+        </div>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Where I'm Shopping</h2>
-        <Field label="Store name" hint={'e.g. "Trader Joe\'s"'}>
-          <input className={inputClass} value={preferences.store} onChange={(e) => update('store', e.target.value)} />
-        </Field>
-      </section>
+        {sortedFavorites.length === 0 ? (
+          <p className="text-sm text-gray-400">No favorites saved yet. Add meals you love and bring them back any week.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {sortedFavorites.map((f) => (
+              <div key={f.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
+                <button
+                  type="button"
+                  onClick={() => toggleFavoriteField(f.id, 'starred')}
+                  title={f.starred ? 'Unstar' : 'Star'}
+                  className="flex-shrink-0 text-lg leading-none"
+                >
+                  {f.starred ? '⭐' : '☆'}
+                </button>
+                <span className="flex-1 text-sm text-gray-900">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => deleteFavorite(f.id)}
+                  title="Remove"
+                  className="flex-shrink-0 px-0.5 text-base leading-none text-gray-300 hover:text-red-600"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">What I Already Have</h2>
-        <Field label="Pantry / fridge items" hint='e.g. "feta cheese block, tortillas, half bag of arugula, 4 eggs"'>
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={preferences.alreadyHave}
-            onChange={(e) => update('alreadyHave', e.target.value)}
-          />
-        </Field>
-      </section>
+        {preferences.favorites.length > 0 && (
+          <div>
+            <p className="mb-1.5 mt-1 text-xs text-gray-500">Include this week (Claude will try to fit these in):</p>
+            <div className="flex flex-wrap gap-1.5">
+              {preferences.favorites.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => toggleFavoriteField(f.id, 'include')}
+                  className={`min-h-[34px] rounded-full border-[1.5px] px-3 py-1.5 text-[13px] transition-colors ${
+                    f.include
+                      ? 'border-amber-300 bg-amber-50 font-medium text-amber-800'
+                      : 'border-gray-200 bg-gray-50 text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  {f.starred ? '⭐ ' : ''}
+                  {f.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Meals I'm Skipping</h2>
+      <Section title="Where I'm shopping">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm text-gray-600">Primary store</label>
+            <select
+              className={textInputClass}
+              value={preferences.store}
+              onChange={(e) => update('store', e.target.value)}
+            >
+              {STORE_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s === 'other' ? 'Other (specify →)' : s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm text-gray-600">If other, specify</label>
+            <input
+              className={textInputClass}
+              placeholder="e.g. Mariano's, Aldi…"
+              value={preferences.storeOther}
+              onChange={(e) => update('storeOther', e.target.value)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="What I already have">
+        <label className="block text-sm text-gray-600">Leftovers, pantry staples, anything to use up</label>
+        <textarea
+          className={textInputClass}
+          rows={3}
+          placeholder="e.g. half bag of spinach, 2 chicken breasts, canned chickpeas, brown rice…"
+          value={preferences.onhand}
+          onChange={(e) => update('onhand', e.target.value)}
+        />
+      </Section>
+
+      <Section title="Days I'm eating out / skipping">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem] border-collapse text-sm">
+          <table className="w-full min-w-[22rem] border-collapse text-sm">
             <thead>
               <tr>
-                <th className="p-2 text-left font-medium text-gray-600">Day</th>
+                <th className="p-1.5"></th>
                 {MEAL_TYPES.map((meal) => (
-                  <th key={meal} className="p-2 text-center font-medium capitalize text-gray-600">
+                  <th key={meal} className="p-1.5 text-center text-xs font-medium capitalize text-gray-500">
                     {meal}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {DAYS_OF_WEEK.map((day) => (
-                <tr key={day} className="border-t border-gray-100">
-                  <td className="p-2 text-gray-800">{day}</td>
+              {WEEKDAYS.map((day) => (
+                <tr key={day}>
+                  <td className="py-1 pr-2 text-sm font-medium text-gray-800">{day.slice(0, 3)}</td>
                   {MEAL_TYPES.map((meal) => (
-                    <td key={meal} className="p-2 text-center">
+                    <td key={meal} className="p-1.5 text-center">
                       <input
                         type="checkbox"
+                        aria-label={`${day} ${meal}`}
                         checked={preferences.skippedMeals[day][meal]}
                         onChange={() => toggleSkip(day, meal)}
-                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        className="h-5 w-5 cursor-pointer accent-blue-600"
                       />
                     </td>
                   ))}
@@ -159,122 +301,75 @@ export default function Step1PreferencesForm({ preferences, onChange, onSubmit, 
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Meal Targets</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Breakfasts">
-            <input
-              type="number"
-              min={0}
-              className={inputClass}
-              value={preferences.targets.breakfasts}
-              onChange={(e) =>
-                update('targets', { ...preferences.targets, breakfasts: Number(e.target.value) })
-              }
-            />
-          </Field>
-          <div className="space-y-1">
-            <Field label="Lunches">
-              <input
-                type="number"
-                min={0}
-                className={inputClass}
-                value={preferences.targets.lunches}
-                onChange={(e) => update('targets', { ...preferences.targets, lunches: Number(e.target.value) })}
-              />
-            </Field>
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={preferences.targets.lunchRotate}
-                onChange={(e) => update('targets', { ...preferences.targets, lunchRotate: e.target.checked })}
-                className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              Propose 2 options to rotate
-            </label>
-          </div>
-          <div className="space-y-1">
-            <Field label="Dinners">
-              <input
-                type="number"
-                min={0}
-                className={inputClass}
-                value={preferences.targets.dinners}
-                onChange={(e) => update('targets', { ...preferences.targets, dinners: Number(e.target.value) })}
-              />
-            </Field>
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={preferences.targets.dinnerRotate}
-                onChange={(e) => update('targets', { ...preferences.targets, dinnerRotate: e.target.checked })}
-                className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              Propose 2–3 options to rotate
-            </label>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-800">
-            <input
-              type="checkbox"
-              checked={preferences.targets.snacks}
-              onChange={(e) => update('targets', { ...preferences.targets, snacks: e.target.checked })}
-              className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-            />
-            Include snack ideas
-          </label>
+        <div>
+          <label className="mb-1.5 block text-sm text-gray-600">Context (optional)</label>
+          <input
+            className={textInputClass}
+            placeholder="e.g. Wednesday dinner is a work event…"
+            value={preferences.eatOutNotes}
+            onChange={(e) => update('eatOutNotes', e.target.value)}
+          />
         </div>
-      </section>
+      </Section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-gray-900">Standing Grocery Items</h2>
-        <ul className="space-y-1">
+      <Section title="Standing grocery items">
+        <p className="text-sm text-gray-500">Always added to the grocery list, every week.</p>
+        <div className="flex flex-wrap gap-1.5">
           {preferences.standingItems.map((item, i) => (
-            <li key={i} className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-sm">
-              <span>{item}</span>
+            <span
+              key={i}
+              className="flex items-center gap-1.5 rounded-full border-[1.5px] border-gray-200 bg-gray-50 py-1.5 pl-3.5 pr-2 text-[13px] text-gray-900"
+            >
+              {item}
               <button
                 type="button"
-                onClick={() => removeStandingItem(i)}
-                className="text-xs text-gray-400 hover:text-red-600"
+                onClick={() => update('standingItems', preferences.standingItems.filter((_, idx) => idx !== i))}
+                className="text-gray-300 hover:text-red-600"
               >
-                Remove
+                ✕
               </button>
-            </li>
+            </span>
           ))}
-        </ul>
-        <div className="flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Add a standing item"
-            value={newStandingItem}
-            onChange={(e) => setNewStandingItem(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                addStandingItem()
-              }
-            }}
-          />
-          <button
-            type="button"
-            onClick={addStandingItem}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Add
-          </button>
         </div>
-      </section>
+        <StandingItemAdder onAdd={(item) => update('standingItems', [...preferences.standingItems, item])} />
+      </Section>
+    </div>
+  )
+}
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
+function StandingItemAdder({ onAdd }: { onAdd: (item: string) => void }) {
+  const [value, setValue] = useState('')
+  return (
+    <div className="flex gap-2">
+      <input
+        className={textInputClass}
+        placeholder="Add a standing item"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            const trimmed = value.trim()
+            if (trimmed) {
+              onAdd(trimmed)
+              setValue('')
+            }
+          }
+        }}
+      />
       <button
-        type="submit"
-        disabled={submitting}
-        className="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        type="button"
+        onClick={() => {
+          const trimmed = value.trim()
+          if (trimmed) {
+            onAdd(trimmed)
+            setValue('')
+          }
+        }}
+        className="flex-shrink-0 rounded-lg border border-gray-300 px-4 text-sm text-gray-700 hover:bg-gray-50"
       >
-        {submitting ? 'Generating meal plan…' : 'Generate meal plan'}
+        Add
       </button>
-    </form>
+    </div>
   )
 }

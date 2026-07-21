@@ -1,14 +1,21 @@
 import { useState } from 'react'
-import type { MealPlan } from '../types'
+import type { MealPlan, Preferences } from '../types'
+import { buildAlternateMealPrompt } from '../lib/promptBuilder'
+import { parseJsonSafely } from '../lib/parseJson'
+import CopyPromptButton from './CopyPromptButton'
+import PasteImportBox from './PasteImportBox'
 
 interface Step2Props {
+  preferences: Preferences
   plan: MealPlan
   onChange: (plan: MealPlan) => void
   onApprove: () => void
-  onRegenerateAll: () => void
-  onRegenerateMeal: (description: string, applyResult: (result: { name: string; description: string; protein: string }) => void) => Promise<void>
-  submitting: boolean
-  error: string | null
+}
+
+interface MealFields {
+  name: string
+  description: string
+  protein: string
 }
 
 interface MealCardProps {
@@ -16,33 +23,59 @@ interface MealCardProps {
   name: string
   description: string
   protein: string
+  mealDescription: string
+  preferences: Preferences
   onEdit: (field: 'name' | 'description' | 'protein', value: string) => void
-  onRegenerate: () => void
-  regenerating: boolean
+  onApplyAlternate: (result: MealFields) => void
 }
 
-function MealCard({ title, name, description, protein, onEdit, onRegenerate, regenerating }: MealCardProps) {
-  const [editing, setEditing] = useState(false)
+function MealCard({
+  title,
+  name,
+  description,
+  protein,
+  mealDescription,
+  preferences,
+  onEdit,
+  onApplyAlternate,
+}: MealCardProps) {
+  const [mode, setMode] = useState<'view' | 'editing' | 'alternate'>('view')
+  const [importError, setImportError] = useState<string | null>(null)
+
+  function handleImportAlternate(text: string) {
+    try {
+      const result = parseJsonSafely<MealFields>(text)
+      onApplyAlternate(result)
+      setImportError(null)
+      setMode('view')
+    } catch {
+      setImportError("Couldn't read that — make sure you pasted Claude's full JSON reply.")
+    }
+  }
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{title}</span>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setEditing((v) => !v)} className="text-xs text-gray-500 hover:text-gray-800">
-            {editing ? 'Done' : 'Edit'}
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'editing' ? 'view' : 'editing')}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {mode === 'editing' ? 'Done' : 'Edit'}
           </button>
           <button
             type="button"
-            onClick={onRegenerate}
-            disabled={regenerating}
-            className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
+            onClick={() => setMode(mode === 'alternate' ? 'view' : 'alternate')}
+            className="text-xs text-gray-500 hover:text-gray-800"
           >
-            {regenerating ? 'Regenerating…' : 'Regenerate'}
+            {mode === 'alternate' ? 'Cancel' : 'Get alternate'}
           </button>
         </div>
       </div>
-      {editing ? (
+
+      {mode === 'editing' && (
         <div className="space-y-2">
           <input
             className="w-full rounded border border-gray-300 px-2 py-1 text-sm font-medium"
@@ -60,7 +93,9 @@ function MealCard({ title, name, description, protein, onEdit, onRegenerate, reg
             onChange={(e) => onEdit('protein', e.target.value)}
           />
         </div>
-      ) : (
+      )}
+
+      {mode === 'view' && (
         <>
           <h3 className="font-medium text-gray-900">{name}</h3>
           <p className="text-sm text-gray-600">{description}</p>
@@ -69,34 +104,29 @@ function MealCard({ title, name, description, protein, onEdit, onRegenerate, reg
           </span>
         </>
       )}
+
+      {mode === 'alternate' && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Copy this prompt, paste Claude's reply back in below to swap in a new version of this meal.
+          </p>
+          <CopyPromptButton
+            label="Copy prompt for this meal"
+            getText={() => buildAlternateMealPrompt(preferences, mealDescription)}
+          />
+          <PasteImportBox
+            label="Paste Claude's reply here"
+            buttonLabel="Use this"
+            onImport={handleImportAlternate}
+            error={importError}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
-export default function Step2MealPlanProposal({
-  plan,
-  onChange,
-  onApprove,
-  onRegenerateAll,
-  onRegenerateMeal,
-  submitting,
-  error,
-}: Step2Props) {
-  const [regeneratingKey, setRegeneratingKey] = useState<string | null>(null)
-
-  async function regenerate(
-    key: string,
-    description: string,
-    apply: (result: { name: string; description: string; protein: string }) => void,
-  ) {
-    setRegeneratingKey(key)
-    try {
-      await onRegenerateMeal(description, apply)
-    } finally {
-      setRegeneratingKey(null)
-    }
-  }
-
+export default function Step2MealPlanProposal({ preferences, plan, onChange, onApprove }: Step2Props) {
   return (
     <div className="space-y-8">
       <section>
@@ -106,13 +136,10 @@ export default function Step2MealPlanProposal({
           name={plan.breakfast.name}
           description={plan.breakfast.description}
           protein={plan.breakfast.protein}
+          mealDescription={`Breakfast: ${plan.breakfast.name} — ${plan.breakfast.description}`}
+          preferences={preferences}
           onEdit={(field, value) => onChange({ ...plan, breakfast: { ...plan.breakfast, [field]: value } })}
-          regenerating={regeneratingKey === 'breakfast'}
-          onRegenerate={() =>
-            regenerate('breakfast', `Breakfast: ${plan.breakfast.name} — ${plan.breakfast.description}`, (result) =>
-              onChange({ ...plan, breakfast: { ...plan.breakfast, ...result } }),
-            )
-          }
+          onApplyAlternate={(result) => onChange({ ...plan, breakfast: { ...plan.breakfast, ...result } })}
         />
       </section>
 
@@ -126,19 +153,18 @@ export default function Step2MealPlanProposal({
               name={lunch.name}
               description={lunch.description}
               protein={lunch.protein}
+              mealDescription={`Lunch option ${lunch.option}: ${lunch.name} — ${lunch.description}`}
+              preferences={preferences}
               onEdit={(field, value) => {
                 const next = [...plan.lunches]
                 next[i] = { ...next[i], [field]: value }
                 onChange({ ...plan, lunches: next })
               }}
-              regenerating={regeneratingKey === `lunch-${i}`}
-              onRegenerate={() =>
-                regenerate(`lunch-${i}`, `Lunch option ${lunch.option}: ${lunch.name} — ${lunch.description}`, (result) => {
-                  const next = [...plan.lunches]
-                  next[i] = { ...next[i], ...result }
-                  onChange({ ...plan, lunches: next })
-                })
-              }
+              onApplyAlternate={(result) => {
+                const next = [...plan.lunches]
+                next[i] = { ...next[i], ...result }
+                onChange({ ...plan, lunches: next })
+              }}
             />
           ))}
         </div>
@@ -154,19 +180,18 @@ export default function Step2MealPlanProposal({
               name={dinner.name}
               description={dinner.description}
               protein={dinner.protein}
+              mealDescription={`Dinner: ${dinner.name} — ${dinner.description}`}
+              preferences={preferences}
               onEdit={(field, value) => {
                 const next = [...plan.dinners]
                 next[i] = { ...next[i], [field]: value }
                 onChange({ ...plan, dinners: next })
               }}
-              regenerating={regeneratingKey === `dinner-${i}`}
-              onRegenerate={() =>
-                regenerate(`dinner-${i}`, `Dinner: ${dinner.name} — ${dinner.description}`, (result) => {
-                  const next = [...plan.dinners]
-                  next[i] = { ...next[i], ...result }
-                  onChange({ ...plan, dinners: next })
-                })
-              }
+              onApplyAlternate={(result) => {
+                const next = [...plan.dinners]
+                next[i] = { ...next[i], ...result }
+                onChange({ ...plan, dinners: next })
+              }}
             />
           ))}
         </div>
@@ -185,26 +210,13 @@ export default function Step2MealPlanProposal({
         </section>
       )}
 
-      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onRegenerateAll}
-          disabled={submitting}
-          className="flex-1 rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-        >
-          {submitting ? 'Regenerating…' : 'Regenerate all'}
-        </button>
-        <button
-          type="button"
-          onClick={onApprove}
-          disabled={submitting}
-          className="flex-1 rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {submitting ? 'Working…' : 'Approve plan'}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onApprove}
+        className="min-h-[44px] w-full rounded-lg bg-emerald-600 px-4 text-[15px] font-semibold text-white hover:bg-emerald-700"
+      >
+        Approve plan
+      </button>
     </div>
   )
 }
